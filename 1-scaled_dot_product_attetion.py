@@ -1,0 +1,44 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torch.utils.data as data
+import math
+import os
+import urllib.request
+from functools import partial
+from urllib.error import HTTPError
+
+def scaled_dot_product(q, k, v, mask=None):
+    # implemented by the student, you can ignore the mask implementation currently
+    # just assignment all the mask is on
+
+    # Score Matric = QK^T 
+    # Scaling is done: Scaled Score Matric = Score Matric / root d_k
+    # But in this example we are comparing 2 words, thus there are q,k,v 
+
+    score_matrix = q@k.mT
+    scaled_score_matrix = score_matrix/ math.sqrt(q.shape[-1])
+    attention_weight = torch.nn.functional.softmax(scaled_score_matrix)
+    # output = attention_weight * v
+    output = attention_weight@v
+    return output, attention_weight
+
+if __name__ == '__main__':
+    # Test case
+    seq_len, d_k = 3, 2
+    torch.manual_seed(3025)
+    q = torch.randn(seq_len, d_k)
+    k = torch.randn(seq_len, d_k)
+    v = torch.randn(seq_len, d_k)
+    valid = torch.tensor([[-1.0142, -1.9154],
+            [-0.4535, -1.6679],
+            [ 0.5474, -1.2476]])
+    output, attention_weight = scaled_dot_product(q,k,v)
+    differences = (output - valid).mean()
+    print(q)
+    print(k)
+    print(v)
+    print(output)
+    print(differences)
+    assert torch.abs(differences) < 0.0001, 'the product must be similar output as expected'
