@@ -229,7 +229,6 @@ class TransformerPredictor(nn.Module):
         x = self.transformer(x, mask=mask)
         x = self.output_net(x)
         return x
-    @torch.no_grad()
 
 
 if __name__ == '__main__':
@@ -237,70 +236,81 @@ if __name__ == '__main__':
     # please create the optimizer
     # please train the model, with the whole training pipeline
 
-    input_dim     = 10
-    model_dim     = 1024 #train_loader.dataset.seq_len
-    num_classes   = train_loader.dataset.num_categories
-    num_heads     = 4
-    num_layers    = 10
+    input_dim   = 10
+    model_dim   = 1024
+    num_classes = train_loader.dataset.num_categories
+    num_heads   = 4
+    num_layers  = 10
 
-    model = TransformerPredictor(input_dim, model_dim, num_classes, num_heads, num_layers, dropout, input_dropout)
-    loss_fn = nn.CrossEntropyLoss()
-    # optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum = 0.9)
-    optimizer = optim.Adam(self.parameters(), lr=self.hparams.lr)
+    model = TransformerPredictor(input_dim, model_dim, num_classes, num_heads, num_layers)
+    loss_func = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
     def train_one_epoch(epoch_index):
-    running_loss = 0.
-    last_loss = 0.
+        running_loss = 0.
+        last_loss = 0.
 
-    # Here, we use enumerate(training_loader) instead of
-    # iter(training_loader) so that we can track the batch
-    # index and do some intra-epoch reporting
-    for i, data in enumerate(train_loader):
-        # Every data instance is an input + label pair
-        inputs, labels = data
-        inputs = F.one_hot(inputs, num_classes=10).float()
+        # Here, we use enumerate(training_loader) instead of
+        # iter(training_loader) so that we can track the batch
+        # index and do some intra-epoch reporting
+        for i, data in enumerate(train_loader):
+            # Every data instance is an input + label pair
+            inputs, labels = data
+            inputs = F.one_hot(inputs, num_classes=10).float()
 
-        # Zero your gradients for every batch!
-        optimizer.zero_grad()
+            # Zero your gradients for every batch!
+            optimizer.zero_grad()
 
-        # Make predictions for this batch
-        outputs = model(inputs)
+            # Make predictions for this batch
+            outputs = model(inputs)
 
-        # Compute the loss and its gradients
-        loss = loss_func(outputs.view(-1,10), labels.view(-1))
-        
-        loss.backward()
+            # Compute the loss and its gradients
+            loss = loss_func(outputs.view(-1,10), labels.view(-1))
+            
+            loss.backward()
 
-        # Adjust learning weights
-        optimizer.step()
+            # Adjust learning weights
+            optimizer.step()
 
-        # Gather data and report
-        running_loss += loss.item()
-        if i % 1000 == 999:
-            last_loss = running_loss / 1000 # loss per batch
-            print('  batch {} loss: {}'.format(i + 1, last_loss))
-            tb_x = epoch_index * len(train_loader) + i + 1
-            running_loss = 0.
+            # Gather data and report
+            running_loss += loss.item()
+            if i % 1000 == 999:
+                last_loss = running_loss / 1000 # loss per batch
+                print('  batch {} loss: {}'.format(i + 1, last_loss))
+                tb_x = epoch_index * len(train_loader) + i + 1
+                running_loss = 0.
 
-    return last_loss
+        return last_loss
 
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    writer = SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
+
     epoch_number = 0
+
     EPOCHS = 5
+
     best_vloss = 1_000_000.
 
     for epoch in range(EPOCHS):
-        print('EPOCH {}:'.format(epoch_number + 1))
+        print(f'EPOCH: {epoch_number}')
 
         # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
-        avg_loss = train_one_epoch(epoch_number, writer)
+        avg_loss = train_one_epoch(epoch_number)
 
-
-        running_vloss = 0.0
         # Set the model to evaluation mode, disabling dropout and using population
         # statistics for batch normalization.
         model.eval()
 
         epoch_number += 1
+
+    # Validating the validation loss
+    criterion = nn.CrossEntropyLoss()
+    # Validation loop
+    model.eval()
+    with torch.no_grad():
+        val_loss = 0
+        for inputs, labels in val_loader:
+            inp_data = F.one_hot(inputs, num_classes=10).float()
+            outputs = model(inp_data)
+            loss = criterion(outputs.view(1024,10), labels.view(-1))
+            val_loss += loss.item()
+        print(f"Validation Loss: {val_loss / len(val_loader)}")
