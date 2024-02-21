@@ -12,13 +12,6 @@ from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
 def scaled_dot_product(q, k, v, mask=None):
-    # implemented by the student, you can ignore the mask implementation currently
-    # just assignment all the mask is on
-
-    # Score Matric = QK^T 
-    # Scaling is done: Scaled Score Matric = Score Matric / root d_k
-    # But in this example we are comparing 2 words, thus there are q,k,v 
-
     score_matrix = q@k.mT
     scaled_score_matrix = score_matrix/ math.sqrt(q.shape[-1])
     attention_weight = torch.nn.functional.softmax(scaled_score_matrix)
@@ -236,6 +229,9 @@ if __name__ == '__main__':
     # please create the optimizer
     # please train the model, with the whole training pipeline
 
+    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+    print("Device:", torch.cuda.get_device_name(device))
+
     input_dim   = 10
     model_dim   = 1024
     num_classes = train_loader.dataset.num_categories
@@ -243,6 +239,7 @@ if __name__ == '__main__':
     num_layers  = 10
 
     model = TransformerPredictor(input_dim, model_dim, num_classes, num_heads, num_layers)
+    model.to(device)
     loss_func = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
@@ -256,8 +253,9 @@ if __name__ == '__main__':
         for i, data in enumerate(train_loader):
             # Every data instance is an input + label pair
             inputs, labels = data
-            inputs = F.one_hot(inputs, num_classes=10).float()
 
+            inputs = F.one_hot(inputs, num_classes=10).float()
+            inputs = inputs.to(device)  # Move input to GPU
             # Zero your gradients for every batch!
             optimizer.zero_grad()
 
@@ -265,7 +263,7 @@ if __name__ == '__main__':
             outputs = model(inputs)
 
             # Compute the loss and its gradients
-            loss = loss_func(outputs.view(-1,10), labels.view(-1))
+            loss = loss_func(outputs.view(-1,10), labels.view(-1).to(device))
             
             loss.backward()
 
@@ -285,7 +283,7 @@ if __name__ == '__main__':
 
     epoch_number = 0
 
-    EPOCHS = 5
+    EPOCHS = 10
 
     best_vloss = 1_000_000.
 
@@ -310,7 +308,8 @@ if __name__ == '__main__':
         val_loss = 0
         for inputs, labels in val_loader:
             inp_data = F.one_hot(inputs, num_classes=10).float()
+            inp_data = inp_data.to(device)  # Move input to GPU
             outputs = model(inp_data)
-            loss = criterion(outputs.view(1024,10), labels.view(-1))
+            loss = criterion(outputs.view(1024,10), labels.view(-1).to(device))
             val_loss += loss.item()
         print(f"Validation Loss: {val_loss / len(val_loader)}")
