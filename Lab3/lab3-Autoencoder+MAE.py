@@ -22,29 +22,17 @@ import torch.optim as optim
 import torch.utils.data as data
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
+import sys
+import os
+import requests
+
+import torch
+import numpy as np
+
+import matplotlib.pyplot as plt
+from PIL import Image
 
 
-
-DATASET_PATH = "dataset"
-
-device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
-print("Device:", device)
-
-# Transformations applied on each image => only make them a tensor
-transform = transforms.Compose([transforms.ToTensor(),
-                                transforms.Normalize((0.5,),(0.5,))])
-
-# Loading the training dataset. We need to split it into a training and validation part
-train_dataset = CIFAR10(root=DATASET_PATH, train=True, transform=transform, download=True)
-train_set, val_set = torch.utils.data.random_split(train_dataset, [45000, 5000])
-
-# Loading the test set
-test_set = CIFAR10(root=DATASET_PATH, train=False, transform=transform, download=True)
-
-# We define a set of data loaders that we can use for various purposes later.
-train_loader = data.DataLoader(train_set, batch_size=256, shuffle=True, drop_last=True, pin_memory=True, num_workers=4)
-val_loader = data.DataLoader(val_set, batch_size=256, shuffle=False, drop_last=False, num_workers=4)
-test_loader = data.DataLoader(test_set, batch_size=256, shuffle=False, drop_last=False, num_workers=4)
 
 def get_train_images(num):
     return torch.stack([train_dataset[i][0] for i in range(num)], dim=0)
@@ -173,70 +161,108 @@ def compare_imgs(img1, img2, title_prefix=""):
     plt.axis('off')
     plt.show()
 
-for i in range(2):
-    # Load example image
-    img, _ = train_dataset[i]
-    img_mean = img.mean(dim=[1,2], keepdims=True)
+def visualize_reconstructions(model, input_imgs):
+    # Reconstruct images
+    model.eval()
+    with torch.no_grad():
+        reconst_imgs = model(input_imgs.to(device))
+    reconst_imgs = reconst_imgs.cpu()
 
-    # Shift image by one pixel
-    SHIFT = 1
-    img_shifted = torch.roll(img, shifts=SHIFT, dims=1)
-    img_shifted = torch.roll(img_shifted, shifts=SHIFT, dims=2)
-    img_shifted[:,:1,:] = img_mean
-    img_shifted[:,:,:1] = img_mean
-    compare_imgs(img, img_shifted, "Shifted -")
+    # Plotting
+    imgs = torch.stack([input_imgs, reconst_imgs], dim=1).flatten(0,1)
+    grid = torchvision.utils.make_grid(imgs, nrow=4, normalize=True)
+    grid = grid.permute(1, 2, 0)
+    plt.figure(figsize=(7,4.5))
+    plt.title(f"Reconstructed from model")
+    plt.imshow(grid)
+    plt.axis('off')
+    plt.show()
 
-    # Set half of the image to zero
-    img_masked = img.clone()
-    img_masked[:,:img_masked.shape[1]//2,:] = img_mean
-    compare_imgs(img, img_masked, "Masked -")
-
-# train_loader = data.DataLoader(train_set, batch_size=256, shuffle=True, drop_last=True, pin_memory=True, num_workers=4)
-# val_loader = data.DataLoader(val_set, batch_size=256, shuffle=False, drop_last=False, num_workers=4)
-# test_loader = data.DataLoader(test_set, batch_size=256, shuffle=False, drop_last=False, num_workers=4)
-
-
-# for batch in tqdm(train_loader, total=len(train_loader)):
 
 def train_one_epoch():
     running_loss = 0
 
     for i, data in enumerate(train_loader):
         inputs, labels = data
+        inputs = inputs.to(device)
         optimizer.zero_grad()
-        loss = model._get_reconstruction_loss(inputs)        
+        loss = model._get_reconstruction_loss(inputs)
         loss.backward()
         running_loss += loss
         optimizer.step()
+        print(f"Batch {i+1}/{len(train_loader)} - Loss: {loss.item():.4f}", end="\r", flush=True)
     return running_loss/len(train_loader)
 
-import torch.optim as optim
-epoch_number = 0
-model = Autoencoder(base_channel_size=32, latent_dim=64)
-model.to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0001) # your code here
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min',
-    factor=0.1, patience=10, threshold=0.0001, threshold_mode='abs') 
-# your code here, can use ReduceLROnPlateau
-# Write training loop here
+if __name__ == "__main__": 
 
-latest_dim = [128, 256, 512, 1024]
+    DATASET_PATH = "dataset"
 
-for dim in latest_dim:
-    model = Autoencoder(base_channel_size=32, latent_dim=dim)
+    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+    print("Device:", torch.cuda.get_device_name(device))
+
+    # Transformations applied on each image => only make them a tensor
+    transform = transforms.Compose([transforms.ToTensor(),
+                                    transforms.Normalize((0.5,),(0.5,))])
+
+    # Loading the training dataset. We need to split it into a training and validation part
+    train_dataset = CIFAR10(root=DATASET_PATH, train=True, transform=transform, download=True)
+    train_set, val_set = torch.utils.data.random_split(train_dataset, [45000, 5000])
+
+    # Loading the test set
+    test_set = CIFAR10(root=DATASET_PATH, train=False, transform=transform, download=True)
+
+    # We define a set of data loaders that we can use for various purposes later.
+    train_loader = data.DataLoader(train_set, batch_size=256, shuffle=True, drop_last=True, pin_memory=True, num_workers=4)
+    val_loader = data.DataLoader(val_set, batch_size=256, shuffle=False, drop_last=False, num_workers=4)
+    test_loader = data.DataLoader(test_set, batch_size=256, shuffle=False, drop_last=False, num_workers=4)
+
+    # for i in range(2):
+    #     # Load example image
+    #     img, _ = train_dataset[i]
+    #     img_mean = img.mean(dim=[1,2], keepdims=True)
+
+    #     # Shift image by one pixel
+    #     SHIFT = 1
+    #     img_shifted = torch.roll(img, shifts=SHIFT, dims=1)
+    #     img_shifted = torch.roll(img_shifted, shifts=SHIFT, dims=2)
+    #     img_shifted[:,:1,:] = img_mean
+    #     img_shifted[:,:,:1] = img_mean
+    #     compare_imgs(img, img_shifted, "Shifted -")
+
+    #     # Set half of the image to zero
+    #     img_masked = img.clone()
+    #     img_masked[:,:img_masked.shape[1]//2,:] = img_mean
+    #     compare_imgs(img, img_masked, "Masked -")
+
+    epoch_number = 0
+    # latest_dim = [1024, 2048, 4096]
+    # list_base_channel_size = [32, 64, 128, 256, 512, 1024, 2048, 4096]
+    # best_vloss = 1_000_000.
+    # for base_channel in list_base_channel_size: 
+    #     for dim in latest_dim:
+    model = Autoencoder(base_channel_size=256, latent_dim=4096)
+    model.to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001) # your code here
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min',
+        factor=0.1, patience=10, threshold=0.0001, threshold_mode='abs') 
     model.train()
 
-    EPOCHS = 20
-    best_vloss = 1_000_000.
+    EPOCHS = 50
 
     for epoch in range(EPOCHS):
-        print(f"Epoch {epoch+1}/{EPOCHS} - {dim} ")
+        print(f"Epoch {epoch+1}/{EPOCHS}")
         # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
         avg_loss = train_one_epoch()
         running_vloss = 0.0
-        # Set the model to evaluation mode, disabling dropout and using population
-        # statistics for batch normalization.
         model.eval()
-        print(f"{avg_loss}")
-        epoch_number += 1
+        # print(f"{avg_loss}")
+    #     epoch_number += 1
+    # if avg_loss < best_vloss:
+    #     best_vloss = avg_loss
+    #     torch.save(model.state_dict(), f"model_{epoch}_{dim}_{base_channel}.pt")
+    #     print(f"Model saved at epoch {epoch_number} with loss: {best_vloss:.4f} latent_dim: {dim} base_channel_size: {base_channel}")
+
+
+    input_imgs = get_train_images(4)
+    visualize_reconstructions(model, input_imgs)
