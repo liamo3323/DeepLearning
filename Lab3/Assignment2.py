@@ -18,6 +18,18 @@ set_matplotlib_formats('svg', 'pdf') # For export
 import matplotlib
 matplotlib.rcParams['lines.linewidth'] = 2.0
 
+# Read the csv file
+csv_path = "6640106/shuffle_info.csv"
+read_csv_path = pd.read_csv(csv_path, header=None)
+
+# Add the path to the sys.path
+sys.path.append("./Lab3/mae")
+chkpt_dir = 'mae_visualize_vit_large.pth'
+
+# Load the ids from the csv file 
+ids_restore = torch.Tensor(eval(read_csv_path.loc[1][1])).type(torch.int64)
+ids_keep = torch.Tensor(eval(read_csv_path.loc[0][1])).type(torch.int64)
+
 def prepare_model(chkpt_dir, arch='mae_vit_large_patch16'):
         # build model
         model = getattr(models_mae, arch)()
@@ -28,10 +40,6 @@ def prepare_model(chkpt_dir, arch='mae_vit_large_patch16'):
         return model
     
 def masking(x):
-    csv_path = "6640106/shuffle_info.csv"
-    read_csv_path = pd.read_csv(csv_path, header=None)
-
-    ids_keep = torch.Tensor(eval(read_csv_path.loc[0][1])).type(torch.int64)
     N, L, D = x.shape  # batch, length, dim
     return torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
 
@@ -57,11 +65,6 @@ def forward_encoder(self, x):
     return x
 
 def restoring_image(img, model):
-
-    csv_path = "6640106/shuffle_info.csv"
-    read_csv_path = pd.read_csv(csv_path, header=None)
-    ids_restore = torch.Tensor(eval(read_csv_path.loc[1][1])).type(torch.int64)
-
     img = Image.open(img).convert('RGB')
     img = img.resize((224, 224))
     img = np.array(img) / 255.
@@ -97,29 +100,24 @@ def restoring_image(img, model):
     show_image(x[0], "original")
 
     plt.subplot(1, 2, 2)
-    show_image(y[0], "recunstructed")
+    show_image(y[0], "reconstructed")
 
     plt.show()
 
 def show_image(image, title=''):
-# image is [H, W, 3]
-    
 
+    imagenet_mean = np.array([0.485, 0.456, 0.406])
+    imagenet_std = np.array([0.229, 0.224, 0.225])
 
     assert image.shape[2] == 3
-    plt.imshow(torch.clip((image * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])) * 255, 0, 255).int())
+    plt.imshow(torch.clip((image * imagenet_std + imagenet_mean) * 255, 0, 255).int())
     plt.title(title, fontsize=16)
     plt.axis('off')
     return
-
     
 def main():
-    sys.path.append("./Lab3/mae")
-    chkpt_dir = 'mae_visualize_vit_large.pth'
     model_mae = prepare_model(chkpt_dir, 'mae_vit_large_patch16')
     restoring_image("6640106.png", model_mae)
         
-    
-
 if __name__ == "__main__": 
     main()
