@@ -19,7 +19,7 @@ import matplotlib
 matplotlib.rcParams['lines.linewidth'] = 2.0
 
 # Read the csv file
-csv_path = "6640106/shuffle_info.csv"
+csv_path = "6640106/shuffle_info.csv" 
 read_csv_path = pd.read_csv(csv_path, header=None)
 
 # Add the path to the sys.path
@@ -27,30 +27,35 @@ sys.path.append("./Lab3/mae")
 chkpt_dir = 'mae_visualize_vit_large.pth'
 
 # Load the ids from the csv file 
-ids_restore = torch.Tensor(eval(read_csv_path.loc[1][1])).type(torch.int64)
-ids_keep = torch.Tensor(eval(read_csv_path.loc[0][1])).type(torch.int64)
+ids_restore = torch.Tensor(eval(read_csv_path.loc[1][1])).type(torch.int64) # ids_restore are the squares that are removed
+ids_keep = torch.Tensor(eval(read_csv_path.loc[0][1])).type(torch.int64) # ids_keep are the squares that are kept
+
+# normalize by ImageNet mean and std
+imagenet_mean = np.array([0.485, 0.456, 0.406])
+imagenet_std = np.array([0.229, 0.224, 0.225])
 
 def prepare_model(chkpt_dir, arch='mae_vit_large_patch16'):
-        # build model
+        # build model 
         model = getattr(models_mae, arch)()
-        # load model
+        # load model from checkpoint
         checkpoint = torch.load(chkpt_dir, map_location='cpu')
         msg = model.load_state_dict(checkpoint['model'], strict=False)
         print(msg)
         return model
     
 def masking(x):
-    N, L, D = x.shape  # batch, length, dim
-    return torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
+    # taken and edited  from model_MAE code
+    N, L, D = x.shape  # batch, length, dim 
+    return torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D)) # mask the squares that are removed
 
 def forward_encoder(self, x):
     # embed patches
-    x = self.patch_embed(x)
+    x = self.patch_embed(x) 
 
     # add pos embed w/o cls token
     x = x + self.pos_embed[:, 1:, :]
 
-    x = masking(x)
+    x = masking(x) # masking the patches 
 
     # append cls token
     cls_token = self.cls_token + self.pos_embed[:, :1, :]
@@ -65,15 +70,13 @@ def forward_encoder(self, x):
     return x
 
 def restoring_image(img, model):
+
+    # load image
     img = Image.open(img).convert('RGB')
     img = img.resize((224, 224))
     img = np.array(img) / 255.
 
     assert img.shape == (224, 224, 3)
-
-    # normalize by ImageNet mean and std
-    imagenet_mean = np.array([0.485, 0.456, 0.406])
-    imagenet_std = np.array([0.229, 0.224, 0.225])
 
     img = img - imagenet_mean
     img = img / imagenet_std
@@ -85,8 +88,10 @@ def restoring_image(img, model):
     x = x.unsqueeze(dim=0)
     x = torch.einsum('nhwc->nchw', x)
 
+    # forward pass through the model
     temp_x = forward_encoder(model, x.float())
 
+    # forward pass through the decoder restoring the squaress that were removed
     y = model.forward_decoder(temp_x, ids_restore)
     y = model.unpatchify(y)
     y = torch.einsum('nchw->nhwc', y).detach().cpu()
@@ -95,19 +100,18 @@ def restoring_image(img, model):
 
     plt.rcParams['figure.figsize'] = [24, 24]
 
-    # show the original and reconstructed images
+    # shows the original and reconstructed images
     plt.subplot(1, 2, 1)
     show_image(x[0], "original")
+    # plt.savefig('original.png', bbox_inches='tight')
 
     plt.subplot(1, 2, 2)
     show_image(y[0], "reconstructed")
+    # plt.savefig('reconstricted.png', bbox_inches='tight')
 
     plt.show()
 
 def show_image(image, title=''):
-
-    imagenet_mean = np.array([0.485, 0.456, 0.406])
-    imagenet_std = np.array([0.229, 0.224, 0.225])
 
     assert image.shape[2] == 3
     plt.imshow(torch.clip((image * imagenet_std + imagenet_mean) * 255, 0, 255).int())
@@ -116,8 +120,9 @@ def show_image(image, title=''):
     return
     
 def main():
-    model_mae = prepare_model(chkpt_dir, 'mae_vit_large_patch16')
-    restoring_image("6640106.png", model_mae)
+    model_mae = prepare_model(chkpt_dir, 'mae_vit_large_patch16') # Load the model from the checkpoint link
+    restoring_image("6640106.png", model_mae) # Restore the image 
         
 if __name__ == "__main__": 
+    # calling main function
     main()
