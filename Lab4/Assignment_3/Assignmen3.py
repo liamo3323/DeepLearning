@@ -7,12 +7,13 @@ import itertools
 from tqdm.autonotebook import tqdm
 import albumentations as A
 import matplotlib.pyplot as plt
-
+import clip
 import torch
 from torch import nn
 import torch.nn.functional as F
 import timm
 from transformers import DistilBertModel, DistilBertConfig, DistilBertTokenizer
+from PIL import Image
 
 df = pd.read_csv("./Images/results.csv", delimiter="|")
 df.columns = ['image', 'caption_number', 'caption']
@@ -115,8 +116,6 @@ class CLIPDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.captions)
-
-
 
 def get_transforms(mode="train"):
     if mode == "train":
@@ -252,7 +251,6 @@ def make_train_valid_dfs():
     valid_dataframe = dataframe[dataframe["id"].isin(valid_ids)].reset_index(drop=True)
     return train_dataframe, valid_dataframe
 
-
 def build_loaders(dataframe, tokenizer, mode):
     transforms = get_transforms(mode=mode)
     dataset = CLIPDataset(
@@ -287,7 +285,6 @@ def train_epoch(model, train_loader, optimizer, lr_scheduler, step):
         tqdm_object.set_postfix(train_loss=loss_meter.avg, lr=get_lr(optimizer))
     return loss_meter
 
-
 def valid_epoch(model, valid_loader):
     loss_meter = AvgMeter()
 
@@ -301,7 +298,6 @@ def valid_epoch(model, valid_loader):
 
         tqdm_object.set_postfix(valid_loss=loss_meter.avg)
     return loss_meter
-
 
 def get_image_embeddings(valid_df, model_path):
     tokenizer = DistilBertTokenizer.from_pretrained(CFG.text_tokenizer)
@@ -351,13 +347,50 @@ def find_matches(model, image_embeddings, query, image_filenames, n=9):
 
 if __name__ == "__main__":
 
-    model = CLIPModel().to(CFG.device)
-    model.load_state_dict(torch.load("best.pt"))
-    _, valid_df = make_train_valid_dfs()
-    model, image_embeddings = get_image_embeddings(valid_df, "best.pt")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # model, preprocess = clip.load("best.pt", device=device)
+    model, preprocess = clip.load('ViT-B/32', device='cuda')
     
-    find_matches(model,
-             image_embeddings,
-             query="A boy is surfing in the ocean.",
-             image_filenames=valid_df['image'].values,
-             n=9)
+    # model = CLIPModel().to(CFG.device)
+    # model.load_state_dict(torch.load("best.pt"))
+
+    if os.path.exists("./6640106/group0/images/0.jpg"):
+        image_path = "./6640106/group0/images"
+        print("Image found :D")
+    else:
+        print("!!!!!NO IMAGES FOUND!!!!!")
+
+    # images = [preprocess(Image.open(image_path)).unsqueeze(0).to(device) for image_path in ["0.jpg", "1.jpg", "2.jpg", "3.jpg", "4.jpg", "5.jpg", "6.jpg", "7.jpg", "8.jpg", "9.jpg"]]
+    images = [preprocess(Image.open("./6640106/group0/images/1.jpg")).unsqueeze(0).to(device)]
+
+
+    captions = ["Two black dogs are playing tug-of-war with an orange toy .", "Two dogs playing with a ball .", "a man in a wetsuit is surfing", "Two black dogs are bearing their teeth beside a white couch .", 
+"Two girls swing on with a boy , all three are wearing blue shirts of the same shade and blue jeans .",
+"A girl dressed in a red polka dot dress holds an adults hand while out walking .",
+"A man is playing the guitar for a child in a hospital bed",
+"A person hanging from a rocky cliff .",
+"A man is a black ninja suit with a mask is playing a guitar .",
+"Two large black dogs are playing in a grassy field ."]
+
+    # Preprocess the text
+    text = clip.tokenize(captions).to(device)
+
+    # Compute the image and text features
+    with torch.no_grad():
+        image_features = [model.encode_image(image) for image in images]
+        text_features = model.encode_text(text)
+
+    # Compute the similarity between the image and text features and select the best captions
+    for image_feature in image_features:
+        similarities = (image_feature @ text_features.T).softmax(dim=-1)
+        best_caption_index = similarities.argmax().item()
+        print(captions[best_caption_index])
+
+    # _, valid_df = make_train_valid_dfs()
+    # model, image_embeddings = get_image_embeddings(valid_df, "best.pt")
+    
+    # find_matches(model,
+    #          image_embeddings,
+    #          query="A boy is surfing in the ocean.",
+    #          image_filenames=valid_df['image'].values,
+    #          n=9)
