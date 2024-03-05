@@ -351,7 +351,8 @@ def find_matches(model, image_embeddings, query, image_filenames, n=9):
 
 if __name__ == "__main__":
 
-
+    model = CLIPModel().to(CFG.device)
+    model.load_state_dict(torch.load("best.pt"))
     _, valid_df = make_train_valid_dfs()
     model, image_embeddings = get_image_embeddings(valid_df, "best.pt")
     
@@ -359,4 +360,4 @@ if __name__ == "__main__":
              image_embeddings,
              query="A boy is surfing in the ocean.",
              image_filenames=valid_df['image'].values,
-             n=19)
+             n=9)
