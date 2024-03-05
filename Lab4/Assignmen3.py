@@ -7,7 +7,7 @@ import itertools
 from tqdm.autonotebook import tqdm
 import albumentations as A
 import matplotlib.pyplot as plt
-import clip
+import os.path as path
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -15,7 +15,7 @@ import timm
 from transformers import DistilBertModel, DistilBertConfig, DistilBertTokenizer
 from PIL import Image
 
-df = pd.read_csv("./Images/results.csv", delimiter="|")
+df = pd.read_csv("./Assignment_3/Images/results.csv", delimiter="|")
 df.columns = ['image', 'caption_number', 'caption']
 df['caption'] = df['caption'].str.lstrip()
 df['caption_number'] = df['caption_number'].str.lstrip()
@@ -23,9 +23,9 @@ df.loc[19999, 'caption_number'] = "4"
 df.loc[19999, 'caption'] = "A dog runs across the grass ."
 ids = [id_ for id_ in range(len(df) // 5) for _ in range(5)]
 df['id'] = ids
-df.to_csv("captions.csv", index=False)
-image_path = "./Images/flickr30k_images"
-captions_path = "./"
+df.to_csv("Assignment_3/captions.csv", index=False)
+image_path = "./Assignment_3/Images/flickr30k_images"
+captions_path = "./Assignment_3/"
 
 df.head()
 
@@ -239,7 +239,7 @@ def cross_entropy(preds, targets, reduction='none'):
         return loss.mean()
     
 def make_train_valid_dfs():
-    dataframe = pd.read_csv(f"captions.csv")
+    dataframe = pd.read_csv(f"{CFG.captions_path}/captions.csv")
     max_id = dataframe["id"].max() + 1 if not CFG.debug else 100
     image_ids = np.arange(0, max_id)
     np.random.seed(42)
@@ -344,53 +344,99 @@ def find_matches(model, image_embeddings, query, image_filenames, n=9):
 
     plt.show()
 
-
 if __name__ == "__main__":
+    # find_matches() takes a model, image_embeddings, query, image_filenames, and n as input 
+    # image embedding is called from valid dataframe in get_image_embeddings()
+    # inside get_image_embeddings() loads the original data set and selects random elements of data set to be the validation
+    # which we dont care about 
+    # get_image_embeddings() creates a valid loader of the random validation images
+    # builder_loader() gets transofms (idk where) <-- just creates a thing is useful :D
+    # but builder_loader() creates a dataset which we need to change
+    # CLIPDataset() is the class that takes stuff but we dont care about captions because we need to match them to images
+    # so we can copy the clip dataset and rename it but remove the tokenizer and captions 
+    # and on get item function we delete the __getitem__ function allows for it to loop through 
+    # we can remove item [caption] and return item image 
+    # change to only care about image? ALSO gotta delete image_filenames
+    # def __len__ self return needs to return self.image
+    # back in the buildloader and turn shuffle to False 
+    # get_image_embeddings run image_features and embeddings 
+    # with the model we can return it to find matches function 
+    # we neeed to instead return a plt to match the 0th match
+    # reprogram to only output images
+        
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    # model, preprocess = clip.load("best.pt", device=device)
-    model, preprocess = clip.load('ViT-B/32', device='cuda')
-    
-    # model = CLIPModel().to(CFG.device)
-    # model.load_state_dict(torch.load("best.pt"))
+    p = "Assignment_3/6640106/"
+    groups = {}
+    transforms = get_transforms(mode='eval')
 
-    if os.path.exists("./6640106/group0/images/0.jpg"):
-        image_path = "./6640106/group0/images"
-        print("Image found :D")
-    else:
-        print("!!!!!NO IMAGES FOUND!!!!!")
+    model = CLIPModel().to(CFG.device)
+    model.load_state_dict(torch.load('best.pt', map_location=CFG.device))
+    model.eval()
 
-    # images = [preprocess(Image.open(image_path)).unsqueeze(0).to(device) for image_path in ["0.jpg", "1.jpg", "2.jpg", "3.jpg", "4.jpg", "5.jpg", "6.jpg", "7.jpg", "8.jpg", "9.jpg"]]
-    images = [preprocess(Image.open("./6640106/group0/images/1.jpg")).unsqueeze(0).to(device)]
+    tokenizer = DistilBertTokenizer.from_pretrained(CFG.text_tokenizer)
+
+    for d in tqdm(os.listdir(p)):
+        ds = []
+        with open(path.join(p, d, "captions_candidates.txt"), 'r') as file: 
+            ds = file.read().split('\n')
+
+        images = []
+        images_path = []
+        
+        for f in os.listdir(path.join(p, d, "images")):
+            images_path.append(path.join(p, d, "images", f))
+            
+            image = cv2.imread(path.join(p, d, "images", f))
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = transforms(image=image)['image']
+            image = torch.tensor(image).permute(2, 0, 1).float()
+            images.append(image)
+
+            dataloader = torch.utils.data.DataLoader(
+                images,
+                batch_size=CFG.batch_size,
+                num_workers=CFG.num_workers,
+                shuffle = False,
+            )
+            
+            valid_image_embeddings = []
+
+            with torch.no_grad():
+                for batch in dataloader:
+                    image_features = model.image_encoder(batch.to(CFG.device))
+                    image_embeddings = model.image_projection(image_features)
+                    valid_image_embeddings.append(image_embeddings)
+                    
+            groups[d] = (ds, torch.cat(valid_image_embeddings), images_path)
 
 
-    captions = ["Two black dogs are playing tug-of-war with an orange toy .", "Two dogs playing with a ball .", "a man in a wetsuit is surfing", "Two black dogs are bearing their teeth beside a white couch .", 
-"Two girls swing on with a boy , all three are wearing blue shirts of the same shade and blue jeans .",
-"A girl dressed in a red polka dot dress holds an adults hand while out walking .",
-"A man is playing the guitar for a child in a hospital bed",
-"A person hanging from a rocky cliff .",
-"A man is a black ninja suit with a mask is playing a guitar .",
-"Two large black dogs are playing in a grassy field ."]
+        results = []
 
-    # Preprocess the text
-    text = clip.tokenize(captions).to(device)
-
-    # Compute the image and text features
-    with torch.no_grad():
-        image_features = [model.encode_image(image) for image in images]
-        text_features = model.encode_text(text)
-
-    # Compute the similarity between the image and text features and select the best captions
-    for image_feature in image_features:
-        similarities = (image_feature @ text_features.T).softmax(dim=-1)
-        best_caption_index = similarities.argmax().item()
-        print(captions[best_caption_index])
-
-    # _, valid_df = make_train_valid_dfs()
-    # model, image_embeddings = get_image_embeddings(valid_df, "best.pt")
-    
-    # find_matches(model,
-    #          image_embeddings,
-    #          query="A boy is surfing in the ocean.",
-    #          image_filenames=valid_df['image'].values,
-    #          n=9)
+        for g in tqdm(groups):
+            captions, image_embeds, images_path = groups[g]
+            
+            n = 1
+            
+            for caption in captions:
+                encoded_query = tokenizer([caption])
+                
+                batch = {
+                    key: torch.tensor(values).to(CFG.device)
+                    for key, values in encoded_query.items()
+                }
+            
+                with torch.no_grad():
+                    text_features = model.text_encoder(
+                        input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
+                    )
+                    text_embeddings = model.text_projection(text_features)
+            
+                image_embeddings_n = F.normalize(image_embeds, p=2, dim=-1)
+                text_embeddings_n = F.normalize(text_embeddings, p=2, dim=-1)
+                dot_similarity = text_embeddings_n @ image_embeddings_n.T
+            
+                values, indices = torch.topk(dot_similarity.squeeze(0), n * 5)
+                matches = [images_path[idx] for idx in indices[::5]]
+            
+                results.append((matches[0].replace('assignment/assignment/6640106/', ''), caption))
+    pd.DataFrame.from_records(results).to_csv('res.csv', header=None, index=False)

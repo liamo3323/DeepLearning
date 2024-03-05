@@ -10,3 +10,4 @@ pandas==2.2.0
 opencv-python==4.9.0.80 
 albumentations==1.4.0
 transformers==4.38.2
+path==16.10.0
