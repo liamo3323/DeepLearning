@@ -1,14 +1,9 @@
 .venv
 runs
 dataset
-mae_visualize_vit_large.pth
+*.pth
 mae
-submittion
-flickr8k.zip
-kaggle.json
-captions.txt
 Images
-captions.csv
 assignment
 *.pt
 6640106
