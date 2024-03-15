@@ -11,3 +11,6 @@ opencv-python==4.9.0.80
 albumentations==1.4.0
 transformers==4.38.2
 path==16.10.0
+datasets==2.18.0
+accelerate==0.27.2
+py7zr==0.21.0
