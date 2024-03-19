@@ -1454,7 +1454,7 @@ def data_collator_customized(features, return_tensors="pt"):
 
 #########-------------
 
-batch_size = 2
+batch_size = 1
 trainer = transformers.Seq2SeqTrainer(
     model=model,
     train_dataset=train_dataset,
