@@ -26,6 +26,8 @@ read_csv_path = pd.read_csv(csv_path, header=None)
 sys.path.append("./Lab3/mae")
 chkpt_dir = 'mae_visualize_vit_large.pth'
 
+orig_img = Image.open("6640106.png").resize((224,224))
+
 # Load the ids from the csv file 
 ids_restore = torch.Tensor(eval(read_csv_path.loc[1][1])).type(torch.int64) # ids_restore are the squares that are removed
 ids_keep = torch.Tensor(eval(read_csv_path.loc[0][1])).type(torch.int64) # ids_keep are the squares that are kept
@@ -125,7 +127,7 @@ def replace_pixels(square_idx, grid_size, square_size, restored_img):
     col = square_idx % grid_size
     for width_pixel in range(square_size*col, square_size*(col+1)):
         for height_pixel in range(square_size*row, square_size*(row+1)):
-            replace_val = "6640106.png".img.getpixel((width_pixel, height_pixel))
+            replace_val = orig_img.getpixel((width_pixel, height_pixel))
             restored_img.putpixel((width_pixel, height_pixel), replace_val)
     
 def main():
