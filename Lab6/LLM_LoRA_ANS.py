@@ -1316,7 +1316,6 @@ class OPTAttention(nn.Module):
 model_name = 'facebook/opt-2.7b'
 model = OPTForCausalLM.from_pretrained(model_name)
 
-
 ############------
 
 
