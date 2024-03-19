@@ -8,7 +8,7 @@ import pandas as pd
 import sys
 import torch
 import numpy as np
-
+import math
 import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
@@ -110,6 +110,7 @@ def restoring_image(img, model):
     # plt.savefig('reconstricted.png', bbox_inches='tight')
 
     plt.show()
+    return y[0]
 
 def show_image(image, title=''):
 
@@ -118,11 +119,30 @@ def show_image(image, title=''):
     plt.title(title, fontsize=16)
     plt.axis('off')
     return
+
+def replace_pixels(square_idx, grid_size, square_size, restored_img):
+    row = math.floor(square_idx / grid_size)
+    col = square_idx % grid_size
+    for width_pixel in range(square_size*col, square_size*(col+1)):
+        for height_pixel in range(square_size*row, square_size*(row+1)):
+            replace_val = orig.img.getpixel((width_pixel, height_pixel))
+            restored_img.putpixel((width_pixel, height_pixel), replace_val)
     
 def main():
     model_mae = prepare_model(chkpt_dir, 'mae_vit_large_patch16') # Load the model from the checkpoint link
-    restoring_image("6640106.png", model_mae) # Restore the image 
-        
+    restored_img = np.array(restoring_image("6640106.png", model_mae)) # Restore the image 
+    restored_image *= imagenet_std
+    restored_image += imagenet_mean
+    restored_image *= 255
+    restored_image = np.uuint8(restored_image)
+
+    replace_img = Image.fromarray(restored_image, 'RGB')
+    width, height = replace_img.size
+    pixel_count = (int(width/14))
+
+    for square in eval(shuffle_data.loc[0][1])[0]:
+        replace_pixels(square, 14, pixel_count, replace_img) 
+
 if __name__ == "__main__": 
     # calling main function
     main()
