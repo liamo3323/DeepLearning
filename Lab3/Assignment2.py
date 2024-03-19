@@ -136,7 +136,7 @@ def main():
     restored_image *= imagenet_std
     restored_image += imagenet_mean
     restored_image *= 255
-    restored_image = np.uuint8(restored_image)
+    restored_image = np.uint8(restored_image)
 
     replace_img = Image.fromarray(restored_image, 'RGB')
     width, height = replace_img.size
